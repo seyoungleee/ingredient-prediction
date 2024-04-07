@@ -1,0 +1,206 @@
+---
+title: "ingredient-prediction"
+author: "Seyoung Lee"
+format:
+  html: 
+    number-sections: true
+---
+
+# Exploring the data
+
+## Load packages
+
+```{r}
+#| message: false
+#| warning: false
+
+library(tidyverse)
+library(quanteda)
+library(quanteda.textstats)
+library(gt)
+```
+
+## Load data
+
+```{r}
+#| message: false
+#| warning: false
+
+df_sent <- read_tsv("data/sentiment_scores.tsv")
+```
+
+## Create a composition table
+
+For simple word counts and comparisons, we can use **quanteda** <http://quanteda.io/> for text processing.
+
+First, we create a document-feature matrix.
+
+```{r}
+#| message: false
+#| warning: false
+
+dfm_comments <- df_sent %>%
+  group_by(doc_id) %>%
+  mutate(doc_id = paste0(doc_id, "-", sequence(n()))) %>%
+  corpus() %>%
+  tokens(remove_punct = TRUE, remove_numbers = TRUE, remove_symbols = TRUE, what = "word") %>%
+  tokens_tolower() %>%
+  dfm()
+
+docvars(dfm_comments, field = "recipe_id") <- df_sent$doc_id
+```
+
+Then, we can extract some values, like the number of recipes, the number of comments in each recipe, the average number of tokens per comment, etc.
+
+```{r}
+#| message: false
+#| warning: false
+
+corpus_comp <- dfm_comments %>% 
+  textstat_frequency(groups = recipe_id) %>%
+  mutate(group = as.numeric(group)) %>%
+  group_by(group) %>%
+  summarize(Tokens = sum(frequency)) %>%
+  ungroup() %>%
+  rename(doc_id = group) %>%
+  full_join(df_sent) %>%
+  dplyr::select(-text) %>%
+  group_by(doc_id) %>%
+  summarize(Comments = n(),
+            Tokens = unique(Tokens)) %>%
+  ungroup() %>%
+  mutate(Tokens_per_Comment = Tokens/Comments) %>%
+  summarize(N_Recipes = n(),
+            Mean_Comments = mean(Comments),
+            Mean_TpC = mean(Tokens_per_Comment),
+            Total_Tokens = sum(Tokens))
+```
+
+Now we can use **gt** to format a nice table.
+
+```{r}
+#| label: tbl-corpus
+#| tbl-cap: "Composition of corpus."
+#| message: false
+#| warning: false
+
+corpus_comp |> 
+  gt() |>
+  fmt_integer() |>
+  cols_label(
+    N_Recipes = md("**Number of Recipes**"),
+    Mean_Comments = md("**Avg. Comments (per Recipe)**"),
+    Mean_TpC = md("**Avg. Tokens (per Comment)**"),
+    Total_Tokens = md("**Total Tokens**")
+  )
+```
+
+# Explore sentiment
+
+First, we can extract some statistics on sentiment including the maximum of the density <https://datavizcatalogue.com/methods/density_plot.html>
+
+```{r}
+#| message: false
+#| warning: false
+
+densMode <- function(x){
+  td <- density(x, bw = .25)
+  maxDens <- which.max(td$y)
+  list(x=td$x[maxDens], y=td$y[maxDens])
+}
+
+sent_stats <- df_sent %>% 
+  group_by(doc_id) %>% 
+  summarize(
+            mean_sent = mean(sent_score),
+            median_sent = median(sent_score),
+            dens_x = densMode(sent_score)$x,
+            sd_sent = sd(sent_score),
+            mad_sent = DescTools::MAD(sent_score)
+            )
+```
+
+Take a look at it returns.
+
+```{r}
+sent_stats |> 
+  head(10) |>
+  gt() |>
+  fmt_number(
+    columns = everything(),
+    decimals = 2
+  ) 
+```
+
+::: callout-note
+Note that there is very little in the way of negative sentiment (on average, anyway). So we will need to scale our variables. Otherwise, everything is going to predict **+**
+:::
+
+Now we can get the ingredient list for each recipe.
+
+```{r}
+#| message: false
+#| warning: false
+
+df_ingred <- read_csv("data/output_cleaned.csv") %>%
+  rownames_to_column(var = "doc_id") %>%
+  dplyr::select(doc_id, Ingredients) %>%
+  mutate(doc_id = as.numeric(doc_id))
+```
+
+And join that data with the sentiment statistics.
+
+```{r}
+#| message: false
+#| warning: false
+
+df_stats <- sent_stats %>%
+  left_join(df_ingred)  %>%
+  mutate(Ingredients = str_split(Ingredients, " ", simplify = F)) %>%
+  unnest(Ingredients) %>%
+  group_by(Ingredients) %>%
+  mutate(n = n()) %>%
+  ungroup() %>%
+  filter(n > 20) %>%
+  mutate(Ingredients = as.factor((Ingredients))) %>%
+  mutate_if(is.numeric, scale)
+```
+
+Check the counts of ingredients.
+
+```{r}
+df_stats %>%
+  group_by(Ingredients) %>%
+  tally() %>%
+  arrange(n) %>%
+  gt()
+```
+
+## Regression
+
+Now you can execute some simple regression. <https://www.datacamp.com/tutorial/linear-regression-R>
+
+```{r}
+library(gtsummary)
+```
+
+Create a simple regression model and remove the intercept.
+
+```{r}
+lm.recipe <- lm(formula = mean_sent ~ 0+Ingredients, data = df_stats) %>%
+   tbl_regression()
+```
+
+Check the results. Note the the *R*^2^ is very low. Meaning this model doesn't explain much of the variation in our data. However, we do have a couple of potentially interesing ingredients that do reach significance.
+
+```{r}
+lm.recipe |>
+    modify_table_body(
+    ~.x %>%
+      arrange(p.value)
+    ) |>
+  add_glance_table(
+    label = list(sigma ~ "\U03C3"),
+    include = c(r.squared, AIC, sigma)
+  )
+```
