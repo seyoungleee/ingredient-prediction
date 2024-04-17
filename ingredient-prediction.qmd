@@ -204,3 +204,37 @@ lm.recipe |>
     include = c(r.squared, AIC, sigma)
   )
 ```
+
+### Recipe pairs
+
+Read in the data for pairs.
+
+```{r}
+
+#| message: false
+#| warning: false
+
+df_pairs <- read_tsv("data/output_cleaned_pairs.tsv", show_col_types = FALSE) %>%
+  filter(n > 10) %>%
+  mutate(ingredient_pair = as.factor((ingredient_pair))) %>%
+  mutate_if(is.numeric, scale)
+
+```
+
+```{r}
+lm.pairs <- lm(formula = mean_sent ~ 0+ingredient_pair, data = df_pairs) %>%
+   tbl_regression()
+```
+
+```{r}
+
+lm.pairs |>
+    modify_table_body(
+    ~.x %>%
+      arrange(p.value)
+    ) |>
+  add_glance_table(
+    label = list(sigma ~ "\U03C3"),
+    include = c(r.squared, AIC, sigma)
+  )
+```
