@@ -1,0 +1,60 @@
+---
+title: "Title of Final Project"
+author: "Seyoung Lee"
+bibliography: references.bib
+format:
+  html: 
+    number-sections: true
+---
+
+The `echo: false` option disables the printing of code (only output is displayed).
+
+```{r}
+#| message: false
+#| warning: false
+#| echo: false
+
+library(tidyverse)
+library(gt)
+```
+
+# Introduction
+
+-   What is your topic?
+
+-   What is your research question/questions?
+
+-   Why is this interesting? What might we learn from your analysis?
+
+-   You can [cite](https://quarto.org/docs/authoring/footnotes-and-citations.html) 2 or 3 relevant sources to help establish what makes your research question compelling.
+
+Blah Blah [see @texbook, pp. 33-35]
+
+# Methods
+
+-   What are the methods that you used to investigate your research questions?
+
+-   Why were those methods chosen (as opposed to other alternatives)?
+
+# Results
+
+-   What did you find?
+
+-   What are your interpretations of your quantitative results?
+
+-   Be sure to add captions to your [figures](https://quarto.org/docs/authoring/figures.html) and [tables](https://quarto.org/docs/authoring/tables.html).
+
+-   Tables should be rendered using [gt](https://gt.rstudio.com/articles/gt.html).
+
+# Discussion
+
+-   What are the high-level takeaways?
+
+-   What are the limitations of your findings/approach?
+
+-   What might be some "next steps" that could elaborate or strengthen your analysis?
+
+# Works Cited
+
+::: {#refs}
+:::
